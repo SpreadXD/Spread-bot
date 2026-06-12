@@ -209,44 +209,53 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
   function startFollowing() {
     stopRandomMovement();
     if (followInterval) clearInterval(followInterval);
-    
-    // Pathfinder ayarları
+
+    // Pathfinder ayarları — kapıları açabilsin, blok kırmasın
     const defaultMove = new Movements(bot);
-    defaultMove.canDig = false; // Master oyuncuya doğru gelirken blok kırmasın
+    defaultMove.canDig = false;
+    defaultMove.canOpenDoors = true;
     bot.pathfinder.setMovements(defaultMove);
 
-    const player = bot.players[master];
-    if (player && player.entity) {
-      bot.pathfinder.setGoal(new goals.GoalFollow(player.entity, 2));
+    // GoalFollow: hedefi sürekli takip et (2 blok mesafede dur)
+    const playerEntry = bot.players[master];
+    if (playerEntry && playerEntry.entity) {
+      bot.pathfinder.setGoal(new goals.GoalFollow(playerEntry.entity, 2), true);
     }
 
-    // Kurtarma ve mesafe takip intervalı
+    // Sürekli hedefi güncelle: her 1.5sn'de goal yenile (entity ref güncellenir)
     followInterval = setInterval(() => {
-      if (!bot) return;
-      const player = bot.players[master];
-      if (player) {
-        if (player.entity) {
-          const distance = bot.entity.position.distanceTo(player.entity.position);
-          // 35 bloktan uzaksa veya farklı boyuttaysa doğrudan master yanına ışınlan (kurtarma)
-          if (distance > 35) {
-            bot.chat(`/tp ${master}`);
-            setTimeout(() => {
-              if (bot && player.entity) {
-                bot.pathfinder.setGoal(new goals.GoalFollow(player.entity, 2));
-              }
-            }, 1000);
-          } else {
-            // Yakındayken master oyuncuya doğru bak
-            if (distance < 6) {
-              bot.lookAt(player.entity.position.offset(0, 1.6, 0));
-            }
-          }
-        } else {
-          // Oyuncu render mesafesi dışında veya farklı boyuttaysa ışınlan
+      if (!bot || !bot.entity) return;
+      const pl = bot.players[master];
+      if (!pl) return;
+
+      if (pl.entity) {
+        const distance = bot.entity.position.distanceTo(pl.entity.position);
+
+        if (distance > 40) {
+          // Çok uzaksa ışınlan, sonra yeniden pathfind et
           bot.chat(`/tp ${master}`);
+          setTimeout(() => {
+            if (!bot) return;
+            const pl2 = bot.players[master];
+            if (pl2 && pl2.entity) {
+              bot.pathfinder.setGoal(new goals.GoalFollow(pl2.entity, 2), true);
+            }
+          }, 1200);
+        } else {
+          // Hedefi sürekli güncelle ki bot asla durmasın
+          try {
+            bot.pathfinder.setGoal(new goals.GoalFollow(pl.entity, 2), true);
+          } catch (e) {}
+          // Yakındayken yüzünü master'a döndür
+          if (distance < 5) {
+            bot.lookAt(pl.entity.position.offset(0, 1.6, 0));
+          }
         }
+      } else {
+        // Oyuncu render dışındaysa ışınlan
+        bot.chat(`/tp ${master}`);
       }
-    }, 3000);
+    }, 1500);
   }
 
   function stopFollowing() {
@@ -258,6 +267,49 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
       try {
         bot.pathfinder.setGoal(null);
       } catch (e) {}
+    }
+  }
+
+  // Envanteri tamamen at (tüm eşyalar)
+  async function handleDropInventory() {
+    if (!bot || !bot.inventory) return;
+    const items = bot.inventory.items();
+    if (items.length === 0) {
+      bot.chat('Envanterim zaten boş master!');
+      return;
+    }
+    bot.chat(`Envanterdeki ${items.length} çeşit eşyayı atıyorum...`);
+    const player = bot.players[master];
+    if (player && player.entity) {
+      await bot.lookAt(player.entity.position.offset(0, 1.6, 0));
+    }
+    for (const item of items) {
+      try {
+        await bot.tossStack(item);
+        await new Promise(resolve => setTimeout(resolve, 200));
+      } catch (e) {}
+    }
+    bot.chat('Tüm envanterimi attım master!');
+  }
+
+  // Sadece eldeki eşyayı at
+  async function handleDropHeldItem() {
+    if (!bot || !bot.inventory) return;
+    const heldItem = bot.inventory.slots[bot.quickBarSlot + 36];
+    if (!heldItem) {
+      bot.chat('Elimde bir şey yok master!');
+      return;
+    }
+    bot.chat(`Elimdeki ${heldItem.name} eşyasını atıyorum...`);
+    const player = bot.players[master];
+    if (player && player.entity) {
+      await bot.lookAt(player.entity.position.offset(0, 1.6, 0));
+    }
+    try {
+      await bot.tossStack(heldItem);
+      bot.chat('Elimdekini attım master!');
+    } catch (e) {
+      bot.chat('Eşyayı atarken hata oluştu.');
     }
   }
 
@@ -622,55 +674,85 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     const lowerMsg = message.toLowerCase();
 
     // 1. Takip etme komutu
-    if (lowerMsg.includes('takip') || lowerMsg.includes('follow') || lowerMsg.includes('arkamdan')) {
+    if (lowerMsg.includes('takip') || lowerMsg.includes('follow') || lowerMsg.includes('arkamdan') ||
+        lowerMsg.includes('peşim') || lowerMsg.includes('yanıma gel') || lowerMsg.includes('yanımda kal')) {
       bot.chat('Seni takip ediyorum!');
       startFollowing();
       return;
     }
 
     // 2. Durma komutu
-    if (lowerMsg.includes('dur') || lowerMsg.includes('stop') || lowerMsg.includes('kal') || lowerMsg.includes('stay') || lowerMsg.includes('bekle')) {
+    if (lowerMsg.includes('dur') || lowerMsg.includes('stop') || lowerMsg.includes('stay') ||
+        lowerMsg.includes('bekle') || lowerMsg.includes('takibi bırak') || lowerMsg.includes('gelme')) {
       bot.chat('Duruyorum.');
       stopFollowing();
+      startRandomMovement();
       return;
     }
 
-    // 3. Teleport/Gelme komutu
-    if (lowerMsg.includes('tp') || lowerMsg.includes('gel') || lowerMsg.includes('come') || lowerMsg.includes('teleport') || lowerMsg.includes('buraya') || lowerMsg.includes('here')) {
+    // 3. Teleport/Gelme komutu (önce kontrol — "gel" ile çakışmasın)
+    if (lowerMsg.includes('/tp') || lowerMsg.includes('teleport') || lowerMsg.includes('buraya gel') ||
+        lowerMsg.includes('yanıma gel') || lowerMsg.includes('come here') || lowerMsg.includes('come to me')) {
       bot.chat('Geliyorum!');
       bot.chat(`/tp ${master}`);
       return;
     }
 
-    // 4. Eşya isteme komutu
-    if (lowerMsg.includes('ver') || lowerMsg.includes('give') || lowerMsg.includes('at') || lowerMsg.includes('toss') || lowerMsg.includes('drop') || lowerMsg.includes('get')) {
-      const { item, quantity } = parseItemRequest(message);
-      bot.chat(`${quantity} adet ${item} hazırlıyorum...`);
-      await handleGiveRequest(item, quantity);
+    // 4. Envanteri tamamen at (ÖNCELİKLİ — 'at' ile çakışmasın diye)
+    const isInventoryDrop =
+      (lowerMsg.includes('envanteri') || lowerMsg.includes('envanter')) &&
+      (lowerMsg.includes('at') || lowerMsg.includes('ver') || lowerMsg.includes('boşalt') ||
+       lowerMsg.includes('dök') || lowerMsg.includes('toss') || lowerMsg.includes('drop'));
+
+    const isHeldDrop =
+      (lowerMsg.includes('elindeki') || lowerMsg.includes('eldeki') || lowerMsg.includes('tuttuğun') ||
+       lowerMsg.includes('elindekini') || lowerMsg.includes('elimdeki') || lowerMsg.includes('elini')) &&
+      (lowerMsg.includes('at') || lowerMsg.includes('ver') || lowerMsg.includes('bırak') ||
+       lowerMsg.includes('toss') || lowerMsg.includes('drop'));
+
+    if (isInventoryDrop) {
+      await handleDropInventory();
       return;
     }
 
-    // 5. Dönme Komutu (360 derece)
-    if (lowerMsg.includes('dön') || lowerMsg.includes('spin') || lowerMsg.includes('360')) {
+    if (isHeldDrop) {
+      await handleDropHeldItem();
+      return;
+    }
+
+    // 5. Dönme Komutu (360 derece) — 'at' den ÖNCE kontrol et
+    if (lowerMsg.includes('360') || lowerMsg.includes('spin') || lowerMsg.includes('döndür') ||
+        lowerMsg.includes('dön') || lowerMsg.includes('çevir')) {
       bot.chat('360 derece dönüyorum!');
       startSpinning360();
       return;
     }
 
-    // 6. Kafa Sallama Komutu (Onaylama - Evet / Hayır)
-    if (lowerMsg.includes('kafa salla') || lowerMsg.includes('nod') || lowerMsg.includes('onayla')) {
-      if (lowerMsg.includes('hayır') || lowerMsg.includes('no') || lowerMsg.includes('olmaz')) {
-        bot.chat('Kafamı sallıyorum (Hayır)...');
+    // 6. Kafa Sallama — tüm varyantlar (evet/hayır/nötr)
+    const isHeadNod =
+      lowerMsg.includes('kafanı salla') || lowerMsg.includes('kafa salla') ||
+      lowerMsg.includes('başını salla') || lowerMsg.includes('baş salla') ||
+      lowerMsg.includes('onayla') || lowerMsg.includes('evet de') ||
+      lowerMsg.includes('nod');
+    const isHeadShake =
+      lowerMsg.includes('kafanı salla hayır') || lowerMsg.includes('hayır de') ||
+      lowerMsg.includes('reddet') || lowerMsg.includes('shake') ||
+      (isHeadNod && (lowerMsg.includes('hayır') || lowerMsg.includes('no') || lowerMsg.includes('olmaz')));
+
+    if (isHeadNod || isHeadShake) {
+      if (isHeadShake) {
+        bot.chat('Hayır diyorum master...');
         await startShakingHead();
       } else {
-        bot.chat('Kafamı sallıyorum (Evet)...');
+        bot.chat('Evet diyorum master!');
         await startNodding();
       }
       return;
     }
 
     // 7. Zıplama Komutu
-    if (lowerMsg.includes('zıpla') || lowerMsg.includes('jump')) {
+    if (lowerMsg.includes('zıpla') || lowerMsg.includes('zıplayıver') || lowerMsg.includes('jump') ||
+        lowerMsg.includes('sıçra') || lowerMsg.includes('hop')) {
       bot.chat('Zıplıyorum!');
       stopRandomMovement();
       bot.setControlState('jump', true);
@@ -684,7 +766,8 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     }
 
     // 8. Eğilme/Çökme Komutu
-    if (lowerMsg.includes('eğil') || lowerMsg.includes('çök') || lowerMsg.includes('sneak')) {
+    if (lowerMsg.includes('eğil') || lowerMsg.includes('çök') || lowerMsg.includes('sneak') ||
+        lowerMsg.includes('çömel') || lowerMsg.includes('sindir') || lowerMsg.includes('gizlen')) {
       bot.chat('Eğiliyorum.');
       stopRandomMovement();
       bot.setControlState('sneak', true);
@@ -694,6 +777,20 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
           startRandomMovement();
         }
       }, 1500);
+      return;
+    }
+
+    // 9. Eşya isteme komutu — 'at' son olarak burada (envanterden değil, /give ile)
+    const isGiveCmd =
+      lowerMsg.includes('ver') || lowerMsg.includes('give') || lowerMsg.includes('get') ||
+      lowerMsg.includes('toss') || lowerMsg.includes('drop') ||
+      // 'at' sadece fiziksel eylem içermeyen mesajlarda eşya atma sayılsın
+      (lowerMsg.includes(' at ') || lowerMsg.endsWith(' at') || lowerMsg.startsWith('at '));
+
+    if (isGiveCmd) {
+      const { item, quantity } = parseItemRequest(message);
+      bot.chat(`${quantity} adet ${item} hazırlıyorum...`);
+      await handleGiveRequest(item, quantity);
       return;
     }
 
