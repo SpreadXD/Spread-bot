@@ -5,11 +5,12 @@ const mineflayer = require('mineflayer');
  * @param {Object} config Bot yapılandırma ayarları
  * @param {string} username Botun kullanıcı adı
  * @param {boolean} isLeader Lider bot mu? (her zaman sunucuda kalır)
+ * @param {Object} coordinator Merkezi koordinatör nesnesi
  */
-function createManagedBot(config, username, isLeader = false) {
+function createManagedBot(config, username, isLeader = false, coordinator = null) {
   console.log(`[Sistem] ${username} oluşturuluyor... [${isLeader ? 'LİDER' : 'SWARM'}]`);
 
-  // Lider bot anında yeniden bağlanır, diğerleri biraz bekler
+  // Lider bot anında yeniden bağlanır (3sn), diğerleri biraz bekler (varsayılan 15sn)
   const reconnectDelay = isLeader ? 3000 : (config.reconnectInterval || 15000);
 
   const botOptions = {
@@ -25,6 +26,15 @@ function createManagedBot(config, username, isLeader = false) {
   let isReconnecting = false;
   let lastTimeSet = 0;
   let lastWeatherClear = 0;
+
+  // Botu koordinatöre kaydet
+  if (coordinator) {
+    if (isLeader) {
+      coordinator.setLeader(bot);
+    } else {
+      coordinator.registerSwarm(username, bot);
+    }
+  }
 
   /**
    * Sunucudaki gerçek oyuncu sayısını döndürür.
@@ -78,6 +88,9 @@ function createManagedBot(config, username, isLeader = false) {
 
   function cleanup() {
     stopRandomMovement();
+    if (coordinator && !isLeader) {
+      coordinator.unregisterSwarm(username);
+    }
     try {
       bot.removeAllListeners();
       bot.on('error', () => {});
@@ -86,11 +99,24 @@ function createManagedBot(config, username, isLeader = false) {
 
   function reconnect() {
     if (isReconnecting) return;
+
+    // Swarm botlar için kontrol: eğer gerçek oyuncu varsa veya coordinator aktif değilse bağlanma
+    if (!isLeader && coordinator && !coordinator.shouldSwarmBeOnline) {
+      console.log(`[Bağlantı] ${username} için yeniden bağlanma iptal edildi (gerçek oyuncu var veya swarm inaktif).`);
+      return;
+    }
+
     isReconnecting = true;
     cleanup();
     console.log(`[Bağlantı] ${username} için ${reconnectDelay / 1000}sn içinde yeniden bağlanılıyor...`);
     setTimeout(() => {
-      createManagedBot(config, username, isLeader);
+      // Bağlanmadan hemen önce tekrar kontrol
+      if (!isLeader && coordinator && !coordinator.shouldSwarmBeOnline) {
+        console.log(`[Bağlantı] ${username} için bağlantı zamanı geldi ama gerçek oyuncu var. Bağlantı kurulmuyor.`);
+        isReconnecting = false;
+        return;
+      }
+      createManagedBot(config, username, isLeader, coordinator);
     }, reconnectDelay);
   }
 
@@ -99,12 +125,19 @@ function createManagedBot(config, username, isLeader = false) {
   bot.once('spawn', () => {
     console.log(`[Giriş] ${username} sunucuya girdi!`);
 
+    const realPlayers = getRealPlayerCount();
+    
+    // Koordinatörün oyuncu durumunu güncelle
+    if (coordinator) {
+      coordinator.updateRealPlayerCount(realPlayers);
+    }
+
     if (!isLeader) {
-      // Swarm bot: sunucuda gerçek oyuncu varsa hemen çık
-      const realPlayers = getRealPlayerCount();
-      if (realPlayers > 0) {
-        console.log(`[Swarm] ${realPlayers} gerçek oyuncu var. ${username} çıkıyor...`);
-        reconnect();
+      // Swarm bot: sunucuda gerçek oyuncu varsa veya koordinatör aktif değilse hemen çık
+      if (realPlayers > 0 || (coordinator && !coordinator.shouldSwarmBeOnline)) {
+        console.log(`[Swarm] Gerçek oyuncu var veya swarm inaktif. ${username} sunucudan çıkıyor...`);
+        cleanup();
+        try { bot.quit(); } catch(e) {}
         return;
       }
     }
@@ -120,11 +153,17 @@ function createManagedBot(config, username, isLeader = false) {
 
     if (!isBotPlayer) {
       console.log(`[Oyuncu] "${player.username}" sunucuya girdi!`);
+      
+      const realPlayers = getRealPlayerCount();
+      if (coordinator) {
+        coordinator.updateRealPlayerCount(realPlayers);
+      }
+
       if (!isLeader) {
         // Swarm botlar çıksın
-        console.log(`[Swarm] ${username} sunucudan çıkıyor (gerçek oyuncu var)...`);
-        stopRandomMovement();
-        reconnect();
+        console.log(`[Swarm] ${username} sunucudan çıkıyor (gerçek oyuncu girdi)...`);
+        cleanup();
+        try { bot.quit(); } catch(e) {}
       } else {
         // Lider kalsın ama hareketi durdur (gereksiz lag yapmasın)
         console.log(`[Lider] Gerçek oyuncu var. ${username} hareketsiz bekliyor...`);
@@ -143,6 +182,10 @@ function createManagedBot(config, username, isLeader = false) {
       const remaining = getRealPlayerCount();
       console.log(`[Oyuncu] "${player.username}" çıktı. Kalan gerçek oyuncu: ${remaining}`);
 
+      if (coordinator) {
+        coordinator.updateRealPlayerCount(remaining);
+      }
+
       if (remaining === 0 && isLeader) {
         // Lider bot yeniden harekete başlasın
         console.log(`[Lider] Sunucuda gerçek oyuncu kalmadı. ${username} harekete başlıyor...`);
@@ -151,7 +194,7 @@ function createManagedBot(config, username, isLeader = false) {
     }
   });
 
-  // Zaman ve hava durumu kontrolü (SADECE LİDER BOT)
+  // Zaman kontrolü (SADECE LİDER BOT)
   bot.on('time', () => {
     if (!isLeader) return;
     if (!bot || !bot.time) return;
@@ -168,21 +211,14 @@ function createManagedBot(config, username, isLeader = false) {
         bot.chat('/time set day');
       }
     }
-  });
 
-  // Hava durumu değiştiğinde kontrol (SADECE LİDER BOT)
-  bot.on('rain', () => {
-    if (!isLeader || !config.autoWeather) return;
-
-    const now = Date.now();
-    // Spam koruması: 30 saniyede bir
-    if (now - lastWeatherClear < 30000) return;
-
-    const realPlayers = getRealPlayerCount();
-    if (realPlayers === 0) {
-      lastWeatherClear = now;
-      console.log(`[Lider] Kötü hava algılandı + gerçek oyuncu yok → /weather clear`);
-      bot.chat('/weather clear 1000000');
+    // ─ Hava durumu kontrolü ─
+    if (config.autoWeather && realPlayers === 0 && bot.isRaining) {
+      if (now - lastWeatherClear > 30000) {
+        lastWeatherClear = now;
+        console.log(`[Lider] Yağmur/Fırtına + gerçek oyuncu yok → /weather clear`);
+        bot.chat('/weather clear 1000000');
+      }
     }
   });
 
@@ -209,7 +245,16 @@ function createManagedBot(config, username, isLeader = false) {
 
   bot.on('end', () => {
     console.log(`[Koptu] ${username} bağlantısı kesildi.`);
-    reconnect();
+    // Lider bot her durumda yeniden bağlanır, swarm botlar sadece coordinator izin veriyorsa
+    if (isLeader) {
+      reconnect();
+    } else {
+      if (coordinator && coordinator.shouldSwarmBeOnline) {
+        reconnect();
+      } else {
+        console.log(`[Swarm] ${username} reconnect iptal edildi (gerçek oyuncu var veya swarm pasif).`);
+      }
+    }
   });
 }
 

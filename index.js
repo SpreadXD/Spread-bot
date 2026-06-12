@@ -161,21 +161,15 @@ async function main() {
     }
   }
 
-  console.log("\n[Sistem] Botlar başlatılıyor...");
+  console.log("\n[Sistem] Koordinatör ve Lider Bot başlatılıyor...");
   console.log("----------------------------------------------------------");
 
-  // Botları sırayla başlat
-  for (let i = 1; i <= config.botCount; i++) {
-    // Lider bot sabit isim alır (OP'u kaybolmaz), diğerleri rastgele suffix alır
-    const isLeader = i === 1;
-    const username = isLeader
-      ? config.leaderName
-      : `${config.botNamePrefix}${i}_${Math.floor(1000 + Math.random() * 9000)}`;
+  const BotCoordinator = require('./coordinator');
+  const coordinator = new BotCoordinator(config);
 
-    setTimeout(() => {
-      createManagedBot(config, username, isLeader);
-    }, (i - 1) * 15000);
-  }
+  // Başlangıçta sadece Lider Bot başlatılır.
+  // Swarm botları, lider bot sunucuya bağlanıp oyuncu yokluğunu onayladığında koordinatör tarafından başlatılacaktır.
+  createManagedBot(config, config.leaderName, true, coordinator);
 }
 
 main().catch(err => {
