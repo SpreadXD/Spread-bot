@@ -4,24 +4,25 @@ const mineflayer = require('mineflayer');
  * Bir Minecraft bot örneği oluşturur ve olayları yönetir.
  * @param {Object} config Bot yapılandırma ayarları
  * @param {string} username Botun kullanıcı adı
+ * @param {boolean} isLeader Zaman yönetimi ve özel komutları çalıştıracak lider bot mu?
  */
-function createManagedBot(config, username) {
-  console.log(`[Sistem] ${username} oluşturuluyor ve bağlanılıyor...`);
+function createManagedBot(config, username, isLeader = false) {
+  console.log(`[Sistem] ${username} oluşturuluyor ve bağlanılıyor... Lider: ${isLeader}`);
 
-  // Aternos ve benzeri sunucular için gecikmeyi ve yeniden bağlanma sürelerini artırıyoruz
   const reconnectDelay = config.reconnectInterval || 15000;
 
   const botOptions = {
     host: config.host,
     port: parseInt(config.port) || 25565,
     username: username,
-    version: config.version || false, // false veya null ise mineflayer otomatik algılar
+    version: config.version || false,
     skipValidation: true
   };
 
   let bot = mineflayer.createBot(botOptions);
   let moveInterval = null;
   let isReconnecting = false;
+  let lastTimeSet = 0;
 
   // Rastgele hareket döngüsü
   function startRandomMovement() {
@@ -36,7 +37,6 @@ function createManagedBot(config, username) {
       const action = actions[Math.floor(Math.random() * actions.length)];
       const duration = Math.floor(Math.random() * 1500) + 500; // 500ms - 2000ms
 
-      // Eylemi başlat
       if (action === 'jump') {
         bot.setControlState('jump', true);
         setTimeout(() => {
@@ -48,7 +48,7 @@ function createManagedBot(config, username) {
           if (bot) bot.setControlState(action, false);
         }, duration);
       }
-    }, Math.floor(Math.random() * 5000) + 3000); // Her 3-8 saniyede bir yeni hareket
+    }, Math.floor(Math.random() * 5000) + 3000);
   }
 
   function cleanup() {
@@ -57,10 +57,7 @@ function createManagedBot(config, username) {
       moveInterval = null;
     }
     try {
-      // Tüm olay dinleyicileri kaldırılıyor
       bot.removeAllListeners();
-      // Kapatma esnasında gelebilecek geç soket hatalarının (ECONNRESET vb.) 
-      // Node.js sürecini çökertmesini önlemek için boş bir hata dinleyicisi bırakıyoruz.
       bot.on('error', () => {});
     } catch (e) {}
   }
@@ -72,7 +69,7 @@ function createManagedBot(config, username) {
 
     console.log(`[Bağlantı] ${username} için ${reconnectDelay / 1000} saniye içinde yeniden bağlanılıyor...`);
     setTimeout(() => {
-      createManagedBot(config, username);
+      createManagedBot(config, username, isLeader);
     }, reconnectDelay);
   }
 
@@ -82,6 +79,25 @@ function createManagedBot(config, username) {
   bot.once('spawn', () => {
     console.log(`[Giriş] ${username} başarıyla sunucuya girdi!`);
     startRandomMovement();
+  });
+
+  // Zaman kontrolü (Sadece Lider Bot ve autoDay aktifse çalışır)
+  bot.on('time', () => {
+    if (!isLeader || !config.autoDay) return;
+    if (!bot || !bot.time) return;
+
+    const timeOfDay = bot.time.timeOfDay;
+    const now = Date.now();
+
+    // Minecraft'ta gece 13000 (gün batımı) ile başlar, 23000 (gün doğumu) arası sürer
+    // Spam yapmamak için en az 30 saniye bekleme süresi koyuyoruz
+    if (timeOfDay >= 13000 && timeOfDay < 23000 && (now - lastTimeSet > 30000)) {
+      lastTimeSet = now;
+      console.log(`[Zaman Kontrolü] Gece vakti algılandı. Sunucu saati sabah yapılıyor...`);
+      
+      // Minecraft chat komutunu gönderir (Op yetkisi gerektirir)
+      bot.chat('/time set day');
+    }
   });
 
   // Ölme durumunda otomatik doğma

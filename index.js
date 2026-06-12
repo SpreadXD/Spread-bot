@@ -46,7 +46,8 @@ function loadConfig() {
     botNamePrefix: "SwarmBot_",
     randomMovement: true,
     autoRespawn: true,
-    reconnectInterval: 15000 // Aternos throttling koruması için varsayılanı 15 saniyeye çektik
+    autoDay: true, // Gece olduğunda otomatik sabah yapma özelliği
+    reconnectInterval: 15000
   };
 }
 
@@ -97,6 +98,9 @@ async function main() {
     config.botCount = process.env.MC_BOT_COUNT ? parseInt(process.env.MC_BOT_COUNT) : config.botCount;
     config.botNamePrefix = process.env.MC_BOT_PREFIX || config.botNamePrefix;
     config.reconnectInterval = process.env.MC_RECONNECT_INTERVAL ? parseInt(process.env.MC_RECONNECT_INTERVAL) : config.reconnectInterval;
+    
+    // Otomatik sabah yapma ayarı (varsayılan true, kapatmak için env'e false girilebilir)
+    config.autoDay = process.env.MC_AUTO_DAY ? process.env.MC_AUTO_DAY === 'true' : (config.autoDay !== undefined ? config.autoDay : true);
 
     console.log("Bulut Sunucu Ayarları:");
     console.log(`- Sunucu IP: ${config.host}`);
@@ -104,6 +108,7 @@ async function main() {
     console.log(`- Sürüm: ${config.version}`);
     console.log(`- Bot Sayısı: ${config.botCount}`);
     console.log(`- İsim Ön Eki: ${config.botNamePrefix}`);
+    console.log(`- Otomatik Sabah Yapma (autoDay): ${config.autoDay}`);
     console.log(`- Yeniden Bağlanma Sıklığı: ${config.reconnectInterval / 1000} saniye`);
     console.log("----------------------------------------------------------");
 
@@ -117,6 +122,7 @@ async function main() {
     console.log(`- Sürüm: ${config.version}`);
     console.log(`- Bot Sayısı: ${config.botCount}`);
     console.log(`- İsim Ön Eki: ${config.botNamePrefix}`);
+    console.log(`- Otomatik Sabah Yapma: ${config.autoDay}`);
     console.log("----------------------------------------------------------");
 
     const useDefaultAns = await askQuestion("Varsayılan ayarlar ile başlatılsın mı? (E/H veya Yes/No): ");
@@ -141,6 +147,11 @@ async function main() {
       const botPrefixInput = await askQuestion(`Bot İsim Ön Eki (${config.botNamePrefix}): `);
       if (botPrefixInput) config.botNamePrefix = botPrefixInput;
 
+      const autoDayInput = await askQuestion(`Gece olunca sabah yapılsın mı? (E/H) (${config.autoDay ? 'E' : 'H'}): `);
+      if (autoDayInput) {
+        config.autoDay = autoDayInput.toLowerCase() === 'e' || autoDayInput.toLowerCase() === 'y';
+      }
+
       // Ayarları dosyaya kaydet
       saveConfig(config);
     }
@@ -149,13 +160,16 @@ async function main() {
   console.log("\n[Sistem] Botlar başlatılıyor...");
   console.log("----------------------------------------------------------");
 
-  // Botları sırayla başlat (Aternos "Connection throttled" limitini aşmak için aralığı 15 saniyeye çıkardık)
+  // Botları sırayla başlat
   for (let i = 1; i <= config.botCount; i++) {
     const randSuffix = Math.floor(1000 + Math.random() * 9000);
     const username = `${config.botNamePrefix}${i}_${randSuffix}`;
     
+    // Sadece ilk bota (i === 1) lider/zaman yöneticisi rolü veriyoruz
+    const isLeader = i === 1;
+
     setTimeout(() => {
-      createManagedBot(config, username);
+      createManagedBot(config, username, isLeader);
     }, (i - 1) * 15000);
   }
 }
