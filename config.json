@@ -6,5 +6,5 @@
   "botNamePrefix": "SwarmBot_",
   "randomMovement": true,
   "autoRespawn": true,
-  "reconnectInterval": 5000
+  "reconnectInterval": 15000
 }

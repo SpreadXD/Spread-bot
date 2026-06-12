@@ -6,6 +6,15 @@ const { createManagedBot } = require('./bot');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 
+// Global hata yakalayıcıları (Node.js sürecinin çökmesini tamamen engellemek için)
+process.on('uncaughtException', (err) => {
+  console.error('[Sistem Hata] Beklenmedik Hata (uncaughtException):', err.message || err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Sistem Hata] Beklenmedik Promise Reddi (unhandledRejection):', reason);
+});
+
 // Yardımcı readline sorusu fonksiyonu
 function askQuestion(query) {
   const rl = readline.createInterface({
@@ -37,7 +46,7 @@ function loadConfig() {
     botNamePrefix: "SwarmBot_",
     randomMovement: true,
     autoRespawn: true,
-    reconnectInterval: 5000
+    reconnectInterval: 15000 // Aternos throttling koruması için varsayılanı 15 saniyeye çektik
   };
 }
 
@@ -87,6 +96,7 @@ async function main() {
     
     config.botCount = process.env.MC_BOT_COUNT ? parseInt(process.env.MC_BOT_COUNT) : config.botCount;
     config.botNamePrefix = process.env.MC_BOT_PREFIX || config.botNamePrefix;
+    config.reconnectInterval = process.env.MC_RECONNECT_INTERVAL ? parseInt(process.env.MC_RECONNECT_INTERVAL) : config.reconnectInterval;
 
     console.log("Bulut Sunucu Ayarları:");
     console.log(`- Sunucu IP: ${config.host}`);
@@ -94,6 +104,7 @@ async function main() {
     console.log(`- Sürüm: ${config.version}`);
     console.log(`- Bot Sayısı: ${config.botCount}`);
     console.log(`- İsim Ön Eki: ${config.botNamePrefix}`);
+    console.log(`- Yeniden Bağlanma Sıklığı: ${config.reconnectInterval / 1000} saniye`);
     console.log("----------------------------------------------------------");
 
     // Web sunucusunu başlat
@@ -138,14 +149,14 @@ async function main() {
   console.log("\n[Sistem] Botlar başlatılıyor...");
   console.log("----------------------------------------------------------");
 
-  // Botları sırayla başlat (sunucu bağlantı limitlerine takılmamak için aralıklı)
+  // Botları sırayla başlat (Aternos "Connection throttled" limitini aşmak için aralığı 15 saniyeye çıkardık)
   for (let i = 1; i <= config.botCount; i++) {
     const randSuffix = Math.floor(1000 + Math.random() * 9000);
     const username = `${config.botNamePrefix}${i}_${randSuffix}`;
     
     setTimeout(() => {
       createManagedBot(config, username);
-    }, (i - 1) * 1500);
+    }, (i - 1) * 15000);
   }
 }
 

@@ -8,6 +8,9 @@ const mineflayer = require('mineflayer');
 function createManagedBot(config, username) {
   console.log(`[Sistem] ${username} oluşturuluyor ve bağlanılıyor...`);
 
+  // Aternos ve benzeri sunucular için gecikmeyi ve yeniden bağlanma sürelerini artırıyoruz
+  const reconnectDelay = config.reconnectInterval || 15000;
+
   const botOptions = {
     host: config.host,
     port: parseInt(config.port) || 25565,
@@ -54,7 +57,11 @@ function createManagedBot(config, username) {
       moveInterval = null;
     }
     try {
+      // Tüm olay dinleyicileri kaldırılıyor
       bot.removeAllListeners();
+      // Kapatma esnasında gelebilecek geç soket hatalarının (ECONNRESET vb.) 
+      // Node.js sürecini çökertmesini önlemek için boş bir hata dinleyicisi bırakıyoruz.
+      bot.on('error', () => {});
     } catch (e) {}
   }
 
@@ -63,10 +70,10 @@ function createManagedBot(config, username) {
     isReconnecting = true;
     cleanup();
 
-    console.log(`[Bağlantı] ${username} için ${config.reconnectInterval / 1000} saniye içinde yeniden bağlanılıyor...`);
+    console.log(`[Bağlantı] ${username} için ${reconnectDelay / 1000} saniye içinde yeniden bağlanılıyor...`);
     setTimeout(() => {
       createManagedBot(config, username);
-    }, config.reconnectInterval || 5000);
+    }, reconnectDelay);
   }
 
   // BOT OLAYLARI (EVENTS)
@@ -95,7 +102,7 @@ function createManagedBot(config, username) {
 
   // Hata durumunda
   bot.on('error', (err) => {
-    console.error(`[Hata] ${username} hatası:`, err.message);
+    console.error(`[Hata] ${username} hatası:`, err.message || err);
     reconnect();
   });
 
