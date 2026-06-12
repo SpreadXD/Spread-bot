@@ -1,0 +1,10 @@
+{
+  "host": "localhost",
+  "port": 25565,
+  "version": "1.20.1",
+  "botCount": 5,
+  "botNamePrefix": "SwarmBot_",
+  "randomMovement": true,
+  "autoRespawn": true,
+  "reconnectInterval": 5000
+}

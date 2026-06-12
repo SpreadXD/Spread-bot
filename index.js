@@ -1,0 +1,154 @@
+const fs = require('fs');
+const path = require('path');
+const readline = require('readline');
+const http = require('http');
+const { createManagedBot } = require('./bot');
+
+const CONFIG_PATH = path.join(__dirname, 'config.json');
+
+// Yardımcı readline sorusu fonksiyonu
+function askQuestion(query) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  return new Promise((resolve) => {
+    rl.question(query, (ans) => {
+      rl.close();
+      resolve(ans.trim());
+    });
+  });
+}
+
+// Varsayılan ayarları yükle
+function loadConfig() {
+  if (fs.existsSync(CONFIG_PATH)) {
+    try {
+      return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    } catch (e) {
+      console.error("[Sistem] Ayar dosyası (config.json) okunamadı, varsayılanlar kullanılacak.");
+    }
+  }
+  return {
+    host: "localhost",
+    port: 25565,
+    version: "1.20.1",
+    botCount: 5,
+    botNamePrefix: "SwarmBot_",
+    randomMovement: true,
+    autoRespawn: true,
+    reconnectInterval: 5000
+  };
+}
+
+// Ayarları kaydet
+function saveConfig(config) {
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
+    console.log("[Sistem] Ayarlar kaydedildi (config.json).");
+  } catch (e) {
+    console.error("[Sistem] Ayarlar kaydedilirken hata oluştu:", e.message);
+  }
+}
+
+// Render veya bulut sunucuları için HTTP sunucusu (Uyanık kalma/Port bağlama için)
+function startWebServer() {
+  const port = process.env.PORT || 3000;
+  http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Minecraft Swarm Bot Aktif ve Çalışıyor!');
+  }).listen(port, () => {
+    console.log(`[Web] Sunucu port ${port} üzerinde aktif (Render uyanık kalma servisi için).`);
+  });
+}
+
+async function main() {
+  console.log("==========================================================");
+  console.log("             MINECRAFT SWARM BOT CLIENT                   ");
+  console.log("==========================================================");
+  console.log("Bu araç sunucu testi ve aktif kalma amaçlı hazırlanmıştır.");
+  console.log("==========================================================\n");
+
+  let config = loadConfig();
+
+  // Render veya diğer bulut ortamlarında çalışıp çalışmadığımızı kontrol et
+  const isCloudEnv = process.env.PORT || process.env.RENDER || process.env.NODE_ENV === 'production';
+
+  if (isCloudEnv) {
+    console.log("[Bulut Ortamı] Bulut ortamı algılandı, interaktif sorular geçiliyor.");
+    
+    // Çevre değişkenlerinden ayarları oku, yoksa config.json kullan
+    config.host = process.env.MC_HOST || config.host;
+    config.port = process.env.MC_PORT ? parseInt(process.env.MC_PORT) : config.port;
+    
+    if (process.env.MC_VERSION) {
+      config.version = process.env.MC_VERSION.toLowerCase() === 'auto' ? false : process.env.MC_VERSION;
+    }
+    
+    config.botCount = process.env.MC_BOT_COUNT ? parseInt(process.env.MC_BOT_COUNT) : config.botCount;
+    config.botNamePrefix = process.env.MC_BOT_PREFIX || config.botNamePrefix;
+
+    console.log("Bulut Sunucu Ayarları:");
+    console.log(`- Sunucu IP: ${config.host}`);
+    console.log(`- Port: ${config.port}`);
+    console.log(`- Sürüm: ${config.version}`);
+    console.log(`- Bot Sayısı: ${config.botCount}`);
+    console.log(`- İsim Ön Eki: ${config.botNamePrefix}`);
+    console.log("----------------------------------------------------------");
+
+    // Web sunucusunu başlat
+    startWebServer();
+  } else {
+    // Lokal interaktif terminal akışı
+    console.log("Mevcut Ayarlar:");
+    console.log(`- Sunucu IP: ${config.host}`);
+    console.log(`- Port: ${config.port}`);
+    console.log(`- Sürüm: ${config.version}`);
+    console.log(`- Bot Sayısı: ${config.botCount}`);
+    console.log(`- İsim Ön Eki: ${config.botNamePrefix}`);
+    console.log("----------------------------------------------------------");
+
+    const useDefaultAns = await askQuestion("Varsayılan ayarlar ile başlatılsın mı? (E/H veya Yes/No): ");
+    
+    if (useDefaultAns.toLowerCase() === 'h' || useDefaultAns.toLowerCase() === 'n' || useDefaultAns.toLowerCase() === 'no') {
+      console.log("\nYeni Ayarları Girin (Varsayılan değer için Enter'a basın):");
+      
+      const hostInput = await askQuestion(`Sunucu IP (${config.host}): `);
+      if (hostInput) config.host = hostInput;
+
+      const portInput = await askQuestion(`Sunucu Port (${config.port}): `);
+      if (portInput) config.port = parseInt(portInput) || config.port;
+
+      const versionInput = await askQuestion(`Minecraft Sürümü (Örn: 1.20.1 veya otomatik algılama için 'auto') (${config.version}): `);
+      if (versionInput) {
+        config.version = versionInput.toLowerCase() === 'auto' ? false : versionInput;
+      }
+
+      const botCountInput = await askQuestion(`Bot Sayısı (${config.botCount}): `);
+      if (botCountInput) config.botCount = parseInt(botCountInput) || config.botCount;
+
+      const botPrefixInput = await askQuestion(`Bot İsim Ön Eki (${config.botNamePrefix}): `);
+      if (botPrefixInput) config.botNamePrefix = botPrefixInput;
+
+      // Ayarları dosyaya kaydet
+      saveConfig(config);
+    }
+  }
+
+  console.log("\n[Sistem] Botlar başlatılıyor...");
+  console.log("----------------------------------------------------------");
+
+  // Botları sırayla başlat (sunucu bağlantı limitlerine takılmamak için aralıklı)
+  for (let i = 1; i <= config.botCount; i++) {
+    const randSuffix = Math.floor(1000 + Math.random() * 9000);
+    const username = `${config.botNamePrefix}${i}_${randSuffix}`;
+    
+    setTimeout(() => {
+      createManagedBot(config, username);
+    }, (i - 1) * 1500);
+  }
+}
+
+main().catch(err => {
+  console.error("[Sistem] Kritik Hata:", err);
+});

@@ -1,0 +1,19 @@
+{
+  "name": "minecraft-bot-swarm",
+  "version": "1.0.0",
+  "description": "Minecraft Server 24/7 Utility Bot Client",
+  "main": "index.js",
+  "bin": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "build": "pkg . --targets node18-win-x64 --output mc-bot-client.exe"
+  },
+  "dependencies": {
+    "mineflayer": "^4.20.0"
+  },
+  "pkg": {
+    "assets": [
+      "config.json"
+    ]
+  }
+}
