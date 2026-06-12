@@ -104,6 +104,8 @@ async function main() {
     config.reconnectInterval = process.env.MC_RECONNECT_INTERVAL ? parseInt(process.env.MC_RECONNECT_INTERVAL) : config.reconnectInterval;
     config.autoDay     = process.env.MC_AUTO_DAY     ? process.env.MC_AUTO_DAY     === 'true' : (config.autoDay     !== undefined ? config.autoDay     : true);
     config.autoWeather = process.env.MC_AUTO_WEATHER ? process.env.MC_AUTO_WEATHER === 'true' : (config.autoWeather !== undefined ? config.autoWeather : true);
+    config.groqApiKey  = process.env.GROQ_API_KEY  || process.env.MC_GROQ_API_KEY  || config.groqApiKey;
+    config.groqModel   = process.env.GROQ_MODEL    || process.env.MC_GROQ_MODEL    || config.groqModel;
 
     console.log("Bulut Sunucu Ayarları:");
     console.log(`- Sunucu IP: ${config.host}`);
@@ -116,6 +118,8 @@ async function main() {
     console.log(`- Otomatik Sabah Yapma (autoDay): ${config.autoDay}`);
     console.log(`- Otomatik Hava Temizleme (autoWeather): ${config.autoWeather}`);
     console.log(`- Yeniden Bağlanma Sıklığı: ${config.reconnectInterval / 1000} saniye`);
+    console.log(`- Groq API Anahtarı: ${config.groqApiKey ? 'Tanımlı (***)' : 'Tanımlanmamış'}`);
+    console.log(`- Groq Model: ${config.groqModel || 'llama-3.3-70b-versatile'}`);
     console.log("----------------------------------------------------------");
 
     // Web sunucusunu başlat

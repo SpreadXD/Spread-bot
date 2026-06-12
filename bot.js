@@ -1,4 +1,116 @@
 const mineflayer = require('mineflayer');
+const https = require('https');
+
+/**
+ * Groq API'sini kullanarak yapay zekadan cevap alır.
+ * @param {string} apiKey Groq API Anahtarı
+ * @param {string} model Groq LLM Modeli
+ * @param {string} prompt Kullanıcı mesajı
+ * @param {string} botName Botun adı (lider bot)
+ * @param {string} masterName Komut veren master oyuncu adı
+ * @returns {Promise<string>} AI cevabı
+ */
+function askGroq(apiKey, model, prompt, botName, masterName) {
+  return new Promise((resolve, reject) => {
+    const defaultModel = model || 'llama-3.3-70b-versatile';
+    const postData = JSON.stringify({
+      model: defaultModel,
+      messages: [
+        {
+          role: "system",
+          content: `Sen Minecraft oyununda sadık bir lider asistan botsun. Adın "${botName}". Efendin/yöneticin "${masterName}". Sana verilen Minecraft chat komutlarını veya normal sohbet mesajlarını yanıtlıyorsun. Türkçe yanıt ver. Cevapların çok uzun olmasın (ortalama 1-2 kısa cümle), samimi, eğlenceli ve yardımsever olsun. Minecraft terimlerini bil.`
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    });
+
+    const options = {
+      hostname: 'api.groq.com',
+      path: '/openai/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Length': Buffer.byteLength(postData)
+      },
+      timeout: 7000 // 7 saniye zaman aşımı
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.choices && parsed.choices[0] && parsed.choices[0].message) {
+            resolve(parsed.choices[0].message.content.trim());
+          } else if (parsed.error) {
+            reject(new Error(parsed.error.message || 'Groq API Hatası'));
+          } else {
+            reject(new Error('Geçersiz API Yanıtı'));
+          }
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+
+    req.on('error', (e) => {
+      reject(e);
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Groq API Zaman Aşımı'));
+    });
+
+    req.write(postData);
+    req.end();
+  });
+}
+
+/**
+ * Uzun mesajları Minecraft'ın 256 karakter sınırına takılmayacak şekilde
+ * parçalara bölerek ve aralarında küçük bir gecikmeyle gönderir.
+ * @param {Object} bot Mineflayer bot nesnesi
+ * @param {string} fullMessage Gönderilecek tam mesaj
+ */
+async function sendSplitMessage(bot, fullMessage) {
+  if (!bot || !fullMessage) return;
+  
+  // Satırlara böl ve 240 karakterden uzun olanları parçala
+  const maxLen = 240;
+  const words = fullMessage.replace(/\n/g, ' ').split(' ');
+  let currentLine = '';
+  const lines = [];
+
+  for (const word of words) {
+    if ((currentLine + ' ' + word).trim().length > maxLen) {
+      if (currentLine.trim()) {
+        lines.push(currentLine.trim());
+      }
+      currentLine = word;
+    } else {
+      currentLine = (currentLine + ' ' + word).trim();
+    }
+  }
+  if (currentLine.trim()) {
+    lines.push(currentLine.trim());
+  }
+
+  // Sırayla 500ms aralıklarla gönder
+  for (const line of lines) {
+    bot.chat(line);
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+}
+
 
 /**
  * Bir Minecraft bot örneği oluşturur ve olayları yönetir.
@@ -423,6 +535,25 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     // ─── SOHBET & DANS DİYALOGLARI ───────────────────────────────────────────────────
     const normalized = lowerMsg.replace(/[^a-z0-9çğıöşü]/g, '');
 
+    // Dans etme
+    if (normalized.includes('dans') || normalized.includes('oyna') || normalized.includes('sıkıldım') || normalized.includes('sikildim')) {
+      bot.chat('Hemen senin için dans ediyorum, izle! :)');
+      startDancing();
+      return;
+    }
+
+    if (config.groqApiKey) {
+      try {
+        console.log(`[Lider Chat] Groq AI çağrılıyor...`);
+        const reply = await askGroq(config.groqApiKey, config.groqModel, message, bot.username, master);
+        console.log(`[Lider Chat] Groq AI yanıtı: "${reply}"`);
+        await sendSplitMessage(bot, reply);
+        return;
+      } catch (err) {
+        console.error(`[Lider Chat] Groq API hatası oluştu, yerel yanıtlara geçiliyor:`, err.message || err);
+      }
+    }
+
     // Selamlaşma
     if (normalized.includes('selam') || normalized.includes('merhaba') || normalized.includes('hello') || normalized.includes('hey') || normalized === 'sa' || normalized === 'slm') {
       const replies = [
@@ -463,13 +594,6 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
         `Adım ${bot.username}, senin için buradayım master!`
       ];
       bot.chat(replies[Math.floor(Math.random() * replies.length)]);
-      return;
-    }
-
-    // Dans etme
-    if (normalized.includes('dans') || normalized.includes('oyna') || normalized.includes('sıkıldım') || normalized.includes('sikildim')) {
-      bot.chat('Hemen senin için dans ediyorum, izle! :)');
-      startDancing();
       return;
     }
 

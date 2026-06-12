@@ -10,5 +10,7 @@
   "autoRespawn": true,
   "autoDay": true,
   "autoWeather": true,
-  "reconnectInterval": 15000
+  "reconnectInterval": 15000,
+  "groqApiKey": "YOUR_GROQ_API_KEY",
+  "groqModel": "llama-3.3-70b-versatile"
 }
