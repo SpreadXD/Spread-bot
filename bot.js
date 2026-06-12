@@ -1,5 +1,6 @@
 const mineflayer = require('mineflayer');
 const https = require('https');
+const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 
 /**
  * Groq API'sini kullanarak yapay zekadan cevap alır.
@@ -134,6 +135,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
   };
 
   let bot = mineflayer.createBot(botOptions);
+  bot.loadPlugin(pathfinder);
   let moveInterval = null;
   let followInterval = null;
   let danceTimeout = null;
@@ -207,24 +209,140 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
   function startFollowing() {
     stopRandomMovement();
     if (followInterval) clearInterval(followInterval);
+    
+    // Pathfinder ayarları
+    const defaultMove = new Movements(bot);
+    defaultMove.canDig = false; // Master oyuncuya doğru gelirken blok kırmasın
+    bot.pathfinder.setMovements(defaultMove);
+
+    const player = bot.players[master];
+    if (player && player.entity) {
+      bot.pathfinder.setGoal(new goals.GoalFollow(player.entity, 2));
+    }
+
+    // Kurtarma ve mesafe takip intervalı
     followInterval = setInterval(() => {
       if (!bot) return;
       const player = bot.players[master];
-      if (player && player.entity) {
-        bot.lookAt(player.entity.position.offset(0, 1.6, 0));
-        const distance = bot.entity.position.distanceTo(player.entity.position);
-        if (distance > 3) {
-          // 3 bloktan uzaksa doğrudan master oyuncunun yanına ışınlan
+      if (player) {
+        if (player.entity) {
+          const distance = bot.entity.position.distanceTo(player.entity.position);
+          // 35 bloktan uzaksa veya farklı boyuttaysa doğrudan master yanına ışınlan (kurtarma)
+          if (distance > 35) {
+            bot.chat(`/tp ${master}`);
+            setTimeout(() => {
+              if (bot && player.entity) {
+                bot.pathfinder.setGoal(new goals.GoalFollow(player.entity, 2));
+              }
+            }, 1000);
+          } else {
+            // Yakındayken master oyuncuya doğru bak
+            if (distance < 6) {
+              bot.lookAt(player.entity.position.offset(0, 1.6, 0));
+            }
+          }
+        } else {
+          // Oyuncu render mesafesi dışında veya farklı boyuttaysa ışınlan
           bot.chat(`/tp ${master}`);
         }
       }
-    }, 1500);
+    }, 3000);
   }
 
   function stopFollowing() {
     if (followInterval) {
       clearInterval(followInterval);
       followInterval = null;
+    }
+    if (bot && bot.pathfinder) {
+      try {
+        bot.pathfinder.setGoal(null);
+      } catch (e) {}
+    }
+  }
+
+  // 360 Derece Dönme Hareketi
+  function startSpinning360() {
+    stopRandomMovement();
+    stopFollowing();
+    
+    let currentYaw = bot.entity.yaw;
+    const steps = 20;
+    const stepDelay = 50;
+    const yawStep = (2 * Math.PI) / steps;
+    let step = 0;
+    
+    const spinInterval = setInterval(() => {
+      if (!bot) {
+        clearInterval(spinInterval);
+        return;
+      }
+      currentYaw += yawStep;
+      bot.look(currentYaw, bot.entity.pitch, true);
+      step++;
+      if (step >= steps) {
+        clearInterval(spinInterval);
+        bot.chat("360 derece döndüm master!");
+        startRandomMovement();
+      }
+    }, stepDelay);
+  }
+
+  // Evet Anlamında Kafa Sallama (Yukarı-Aşağı)
+  async function startNodding() {
+    stopRandomMovement();
+    stopFollowing();
+
+    // Önce master oyuncuya odaklan
+    const player = bot.players[master];
+    if (player && player.entity) {
+      await bot.lookAt(player.entity.position.offset(0, 1.6, 0));
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 300));
+    if (!bot) return;
+    
+    const originalPitch = bot.entity.pitch;
+    const pitchChanges = [0.4, -0.4, 0.4, -0.4, 0.4, -0.4, 0];
+    
+    for (const p of pitchChanges) {
+      if (!bot) break;
+      await bot.look(bot.entity.yaw, originalPitch + p, true);
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+    
+    if (bot) {
+      bot.chat("Kafamı salladım master!");
+      startRandomMovement();
+    }
+  }
+
+  // Hayır Anlamında Kafa Sallama (Sağa-Sola)
+  async function startShakingHead() {
+    stopRandomMovement();
+    stopFollowing();
+
+    // Önce master oyuncuya odaklan
+    const player = bot.players[master];
+    if (player && player.entity) {
+      await bot.lookAt(player.entity.position.offset(0, 1.6, 0));
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 300));
+    if (!bot) return;
+    
+    const originalYaw = bot.entity.yaw;
+    const yawChanges = [0.4, -0.4, 0.4, -0.4, 0.4, -0.4, 0];
+    
+    for (const y of yawChanges) {
+      if (!bot) break;
+      await bot.look(originalYaw + y, bot.entity.pitch, true);
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+    
+    if (bot) {
+      bot.chat("Hayır anlamında kafamı salladım master.");
+      startRandomMovement();
     }
   }
 
@@ -529,6 +647,53 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
       const { item, quantity } = parseItemRequest(message);
       bot.chat(`${quantity} adet ${item} hazırlıyorum...`);
       await handleGiveRequest(item, quantity);
+      return;
+    }
+
+    // 5. Dönme Komutu (360 derece)
+    if (lowerMsg.includes('dön') || lowerMsg.includes('spin') || lowerMsg.includes('360')) {
+      bot.chat('360 derece dönüyorum!');
+      startSpinning360();
+      return;
+    }
+
+    // 6. Kafa Sallama Komutu (Onaylama - Evet / Hayır)
+    if (lowerMsg.includes('kafa salla') || lowerMsg.includes('nod') || lowerMsg.includes('onayla')) {
+      if (lowerMsg.includes('hayır') || lowerMsg.includes('no') || lowerMsg.includes('olmaz')) {
+        bot.chat('Kafamı sallıyorum (Hayır)...');
+        await startShakingHead();
+      } else {
+        bot.chat('Kafamı sallıyorum (Evet)...');
+        await startNodding();
+      }
+      return;
+    }
+
+    // 7. Zıplama Komutu
+    if (lowerMsg.includes('zıpla') || lowerMsg.includes('jump')) {
+      bot.chat('Zıplıyorum!');
+      stopRandomMovement();
+      bot.setControlState('jump', true);
+      setTimeout(() => {
+        if (bot) {
+          bot.setControlState('jump', false);
+          startRandomMovement();
+        }
+      }, 500);
+      return;
+    }
+
+    // 8. Eğilme/Çökme Komutu
+    if (lowerMsg.includes('eğil') || lowerMsg.includes('çök') || lowerMsg.includes('sneak')) {
+      bot.chat('Eğiliyorum.');
+      stopRandomMovement();
+      bot.setControlState('sneak', true);
+      setTimeout(() => {
+        if (bot) {
+          bot.setControlState('sneak', false);
+          startRandomMovement();
+        }
+      }, 1500);
       return;
     }
 

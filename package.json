@@ -9,7 +9,8 @@
     "build": "pkg . --targets node18-win-x64 --output mc-bot-client.exe"
   },
   "dependencies": {
-    "mineflayer": "^4.20.0"
+    "mineflayer": "^4.20.0",
+    "mineflayer-pathfinder": "^2.4.5"
   },
   "pkg": {
     "assets": [
