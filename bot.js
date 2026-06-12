@@ -23,6 +23,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
 
   let bot = mineflayer.createBot(botOptions);
   let moveInterval = null;
+  let followInterval = null;
   let isReconnecting = false;
   let lastTimeSet = 0;
   let lastWeatherClear = 0;
@@ -35,6 +36,9 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
       coordinator.registerSwarm(username, bot);
     }
   }
+
+  // Master Oyuncu (Komut verebilen tek oyuncu)
+  const master = config.masterName || 'NuclearTactic';
 
   /**
    * Sunucudaki gerçek oyuncu sayısını döndürür.
@@ -86,8 +90,118 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     }
   }
 
+  // Lider Bot Takip Sistemleri
+  function startFollowing() {
+    stopRandomMovement();
+    if (followInterval) clearInterval(followInterval);
+    followInterval = setInterval(() => {
+      if (!bot) return;
+      const player = bot.players[master];
+      if (player && player.entity) {
+        bot.lookAt(player.entity.position.offset(0, 1.6, 0));
+        const distance = bot.entity.position.distanceTo(player.entity.position);
+        if (distance > 3) {
+          // 3 bloktan uzaksa doğrudan master oyuncunun yanına ışınlan
+          bot.chat(`/tp ${master}`);
+        }
+      }
+    }, 1500);
+  }
+
+  function stopFollowing() {
+    if (followInterval) {
+      clearInterval(followInterval);
+      followInterval = null;
+    }
+  }
+
+  // Eşya İsteği Ayrıştırıcı (Türkçe & İngilizce Destekli)
+  function parseItemRequest(message) {
+    const words = message.toLowerCase().split(/\s+/);
+    let quantity = 1;
+    const numMatch = message.match(/\d+/);
+    if (numMatch) {
+      quantity = parseInt(numMatch[0]);
+    }
+
+    const translations = {
+      'elmas': 'diamond',
+      'altin': 'gold_ingot',
+      'altın': 'gold_ingot',
+      'demir': 'iron_ingot',
+      'zumrut': 'emerald',
+      'zümrüt': 'emerald',
+      'kömür': 'coal',
+      'komur': 'coal',
+      'tas': 'stone',
+      'taş': 'stone',
+      'toprak': 'dirt',
+      'ekmek': 'bread',
+      'tahta': 'oak_planks',
+      'odun': 'oak_log',
+      'kılıç': 'diamond_sword',
+      'kilic': 'diamond_sword',
+      'kazma': 'diamond_pickaxe',
+      'balta': 'diamond_axe',
+      'kürek': 'diamond_shovel',
+      'kurek': 'diamond_shovel',
+      'yay': 'bow',
+      'ok': 'arrow',
+      'meşale': 'torch',
+      'mesale': 'torch',
+      'blok': 'dirt',
+      'obsidyen': 'obsidian',
+      'biftek': 'cooked_beef'
+    };
+
+    const filterWords = ['swarm', 'leader', 'lider', '001', 'ver', 'give', 'at', 'toss', 'drop', 'get', 'lütfen', 'please', 'bana', 'me', 'tane', 'adet', 'x', '_'];
+    const itemWords = words.filter(w => {
+      return !w.match(/^\d+$/) && !filterWords.includes(w) && w.replace(/[^a-z]/g, '').length > 0;
+    });
+
+    let requestedItem = itemWords[0] || 'diamond';
+    if (translations[requestedItem]) {
+      requestedItem = translations[requestedItem];
+    }
+
+    return { item: requestedItem, quantity: quantity };
+  }
+
+  // Eşya Vermeyi Gerçekleştiren Fonksiyon
+  async function handleGiveRequest(item, quantity) {
+    console.log(`[Lider] Eşya isteği alındı: ${quantity}x ${item}`);
+    bot.chat(`/give ${bot.username} ${item} ${quantity}`);
+
+    // Eşyanın envantere yüklenmesi için 1.5 saniye bekle
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    if (!bot || !bot.inventory) return;
+
+    const items = bot.inventory.items();
+    const matchingItems = items.filter(i => i.name.includes(item) || item.includes(i.name));
+
+    if (matchingItems.length > 0) {
+      try {
+        const player = bot.players[master];
+        if (player && player.entity) {
+          await bot.lookAt(player.entity.position.offset(0, 1.6, 0));
+        }
+        for (const targetItem of matchingItems) {
+          await bot.tossStack(targetItem);
+        }
+        bot.chat(`${quantity} adet ${item} verdim!`);
+      } catch (err) {
+        console.error('Toss error:', err);
+        bot.chat('Eşyayı atarken bir sorun oluştu.');
+      }
+    } else {
+      bot.chat('İstediğin eşyayı envanterimde bulamadım veya geçersiz eşya adı.');
+    }
+  }
+
   function cleanup() {
     stopRandomMovement();
+    stopFollowing();
     if (coordinator && !isLeader) {
       coordinator.unregisterSwarm(username);
     }
@@ -219,6 +333,55 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
         console.log(`[Lider] Yağmur/Fırtına + gerçek oyuncu yok → /weather clear`);
         bot.chat('/weather clear 1000000');
       }
+    }
+  });
+
+  // Sohbet komutlarını algılayıcı (SADECE LİDER BOT)
+  bot.on('chat', async (sender, message) => {
+    if (!isLeader) return;
+    if (sender.toLowerCase() !== master.toLowerCase()) return;
+
+    // Kendisine seslenip seslenilmediğini kontrol et (Küçük/büyük harf ve özel karakterlerden bağımsız)
+    const cleanMsg = message.toLowerCase().replace(/[^a-z]/g, '');
+    const cleanBotName = bot.username.toLowerCase().replace(/[^a-z]/g, '');
+
+    const isAddressed = 
+      cleanMsg.includes(cleanBotName) || 
+      message.toLowerCase().includes('leader') ||
+      message.toLowerCase().includes('lider');
+
+    if (!isAddressed) return;
+
+    console.log(`[Lider Chat] Master oyuncudan komut alındı: "${message}"`);
+    const lowerMsg = message.toLowerCase();
+
+    // 1. Takip etme komutu
+    if (lowerMsg.includes('takip') || lowerMsg.includes('follow') || lowerMsg.includes('arkamdan')) {
+      bot.chat('Seni takip ediyorum!');
+      startFollowing();
+      return;
+    }
+
+    // 2. Durma komutu
+    if (lowerMsg.includes('dur') || lowerMsg.includes('stop') || lowerMsg.includes('kal') || lowerMsg.includes('stay') || lowerMsg.includes('bekle')) {
+      bot.chat('Duruyorum.');
+      stopFollowing();
+      return;
+    }
+
+    // 3. Teleport/Gelme komutu
+    if (lowerMsg.includes('tp') || lowerMsg.includes('gel') || lowerMsg.includes('come') || lowerMsg.includes('teleport') || lowerMsg.includes('buraya') || lowerMsg.includes('here')) {
+      bot.chat('Geliyorum!');
+      bot.chat(`/tp ${master}`);
+      return;
+    }
+
+    // 4. Eşya isteme komutu
+    if (lowerMsg.includes('ver') || lowerMsg.includes('give') || lowerMsg.includes('at') || lowerMsg.includes('toss') || lowerMsg.includes('drop') || lowerMsg.includes('get')) {
+      const { item, quantity } = parseItemRequest(message);
+      bot.chat(`${quantity} adet ${item} hazırlıyorum...`);
+      await handleGiveRequest(item, quantity);
+      return;
     }
   });
 

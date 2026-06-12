@@ -5,6 +5,7 @@
   "botCount": 5,
   "botNamePrefix": "SwarmBot_",
   "leaderName": "SpreadLeader",
+  "masterName": "NuclearTactic",
   "randomMovement": true,
   "autoRespawn": true,
   "autoDay": true,
