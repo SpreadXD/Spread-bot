@@ -8,5 +8,6 @@
   "randomMovement": true,
   "autoRespawn": true,
   "autoDay": true,
+  "autoWeather": true,
   "reconnectInterval": 15000
 }

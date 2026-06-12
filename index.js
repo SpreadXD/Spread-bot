@@ -47,7 +47,8 @@ function loadConfig() {
     leaderName: "SpreadLeader", // Lider botun sabit ismi (bir kez /op ver, sonsuza kadar çalışır)
     randomMovement: true,
     autoRespawn: true,
-    autoDay: true,
+    autoDay: true,      // Gece → /time set day (gerçek oyuncu yokken)
+    autoWeather: true,  // Yağmur/fırtına → /weather clear (gerçek oyuncu yokken)
     reconnectInterval: 15000
   };
 }
@@ -100,9 +101,8 @@ async function main() {
     config.botNamePrefix = process.env.MC_BOT_PREFIX || config.botNamePrefix;
     config.leaderName = process.env.MC_LEADER_NAME || config.leaderName || 'SpreadLeader';
     config.reconnectInterval = process.env.MC_RECONNECT_INTERVAL ? parseInt(process.env.MC_RECONNECT_INTERVAL) : config.reconnectInterval;
-    
-    // Otomatik sabah yapma ayarı (varsayılan true, kapatmak için env'e false girilebilir)
-    config.autoDay = process.env.MC_AUTO_DAY ? process.env.MC_AUTO_DAY === 'true' : (config.autoDay !== undefined ? config.autoDay : true);
+    config.autoDay     = process.env.MC_AUTO_DAY     ? process.env.MC_AUTO_DAY     === 'true' : (config.autoDay     !== undefined ? config.autoDay     : true);
+    config.autoWeather = process.env.MC_AUTO_WEATHER ? process.env.MC_AUTO_WEATHER === 'true' : (config.autoWeather !== undefined ? config.autoWeather : true);
 
     console.log("Bulut Sunucu Ayarları:");
     console.log(`- Sunucu IP: ${config.host}`);
@@ -112,6 +112,7 @@ async function main() {
     console.log(`- İsim Ön Eki: ${config.botNamePrefix}`);
     console.log(`- Lider Bot İsmi: ${config.leaderName}`);
     console.log(`- Otomatik Sabah Yapma (autoDay): ${config.autoDay}`);
+    console.log(`- Otomatik Hava Temizleme (autoWeather): ${config.autoWeather}`);
     console.log(`- Yeniden Bağlanma Sıklığı: ${config.reconnectInterval / 1000} saniye`);
     console.log("----------------------------------------------------------");
 
