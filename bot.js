@@ -24,9 +24,29 @@ function createManagedBot(config, username, isLeader = false) {
   let isReconnecting = false;
   let lastTimeSet = 0;
 
+  /**
+   * Sunucudaki gerçek oyuncu sayısını döndürür.
+   * Bot kullanıcı adları (leaderName veya botNamePrefix ile başlayanlar) sayılmaz.
+   */
+  function getRealPlayerCount() {
+    if (!bot || !bot.players) return 0;
+
+    let realCount = 0;
+    for (const playerName of Object.keys(bot.players)) {
+      const isBot =
+        playerName === config.leaderName ||
+        playerName.startsWith(config.botNamePrefix || 'SwarmBot_');
+      if (!isBot) {
+        realCount++;
+      }
+    }
+    return realCount;
+  }
+
   // Rastgele hareket döngüsü
   function startRandomMovement() {
     if (!config.randomMovement) return;
+    if (moveInterval) return; // Zaten çalışıyorsa tekrar başlatma
 
     console.log(`[Hareket] ${username} için rastgele hareketler başlatıldı.`);
 
@@ -35,7 +55,7 @@ function createManagedBot(config, username, isLeader = false) {
 
       const actions = ['forward', 'back', 'left', 'right', 'jump', 'sneak'];
       const action = actions[Math.floor(Math.random() * actions.length)];
-      const duration = Math.floor(Math.random() * 1500) + 500; // 500ms - 2000ms
+      const duration = Math.floor(Math.random() * 1500) + 500;
 
       if (action === 'jump') {
         bot.setControlState('jump', true);
@@ -51,51 +71,103 @@ function createManagedBot(config, username, isLeader = false) {
     }, Math.floor(Math.random() * 5000) + 3000);
   }
 
-  function cleanup() {
+  function stopRandomMovement() {
     if (moveInterval) {
       clearInterval(moveInterval);
       moveInterval = null;
     }
+    // Botun tüm hareketlerini durdur
+    if (bot) {
+      try {
+        ['forward', 'back', 'left', 'right', 'jump', 'sneak'].forEach(ctrl => {
+          bot.setControlState(ctrl, false);
+        });
+      } catch (e) {}
+    }
+  }
+
+  function cleanup() {
+    stopRandomMovement();
     try {
       bot.removeAllListeners();
       bot.on('error', () => {});
     } catch (e) {}
   }
 
-  function reconnect() {
+  function reconnect(delay) {
     if (isReconnecting) return;
     isReconnecting = true;
     cleanup();
 
-    console.log(`[Bağlantı] ${username} için ${reconnectDelay / 1000} saniye içinde yeniden bağlanılıyor...`);
+    const waitTime = delay || reconnectDelay;
+    console.log(`[Bağlantı] ${username} için ${waitTime / 1000} saniye içinde yeniden bağlanılıyor...`);
     setTimeout(() => {
       createManagedBot(config, username, isLeader);
-    }, reconnectDelay);
+    }, waitTime);
   }
 
   // BOT OLAYLARI (EVENTS)
 
-  // Giriş yapıldığında
   bot.once('spawn', () => {
     console.log(`[Giriş] ${username} başarıyla sunucuya girdi!`);
+    
+    // Spawn anında zaten gerçek oyuncu var mı kontrol et
+    const realPlayers = getRealPlayerCount();
+    if (realPlayers > 0) {
+      console.log(`[Kontrol] ${realPlayers} gerçek oyuncu bulundu. ${username} sunucudan çıkıyor...`);
+      reconnect(reconnectDelay);
+      return;
+    }
+
     startRandomMovement();
   });
 
-  // Zaman kontrolü (Sadece Lider Bot ve autoDay aktifse çalışır)
+  // Oyuncu listeye eklendiğinde (birileri sunucuya girdiğinde)
+  bot.on('playerJoined', (player) => {
+    const isBot =
+      player.username === config.leaderName ||
+      player.username.startsWith(config.botNamePrefix || 'SwarmBot_');
+
+    if (!isBot) {
+      console.log(`[Uyarı] Gerçek oyuncu "${player.username}" sunucuya girdi! ${username} çıkıyor...`);
+      stopRandomMovement();
+      reconnect(reconnectDelay);
+    }
+  });
+
+  // Oyuncu listeden çıktığında (birileri sunucudan ayrıldığında)
+  bot.on('playerLeft', (player) => {
+    const isBot =
+      player.username === config.leaderName ||
+      player.username.startsWith(config.botNamePrefix || 'SwarmBot_');
+
+    if (!isBot) {
+      const remaining = getRealPlayerCount();
+      console.log(`[Bilgi] "${player.username}" sunucudan çıktı. Kalan gerçek oyuncu: ${remaining}`);
+
+      if (remaining === 0) {
+        console.log(`[Bilgi] Sunucuda gerçek oyuncu kalmadı. ${username} harekete başlıyor...`);
+        startRandomMovement();
+      }
+    }
+  });
+
+  // Zaman kontrolü (Sadece Lider Bot, autoDay aktif VE gerçek oyuncu yoksa çalışır)
   bot.on('time', () => {
     if (!isLeader || !config.autoDay) return;
     if (!bot || !bot.time) return;
 
+    // Gerçek oyuncu varsa zaman değiştirme
+    if (getRealPlayerCount() > 0) return;
+
     const timeOfDay = bot.time.timeOfDay;
     const now = Date.now();
 
-    // Minecraft'ta gece 13000 (gün batımı) ile başlar, 23000 (gün doğumu) arası sürer
-    // Spam yapmamak için en az 30 saniye bekleme süresi koyuyoruz
+    // Gece aralığı: 13000 (gün batımı) - 23000 (gün doğumu)
+    // Spam koruması: 30 saniyede bir en fazla bir kez yap
     if (timeOfDay >= 13000 && timeOfDay < 23000 && (now - lastTimeSet > 30000)) {
       lastTimeSet = now;
-      console.log(`[Zaman Kontrolü] Gece vakti algılandı. Sunucu saati sabah yapılıyor...`);
-      
-      // Minecraft chat komutunu gönderir (Op yetkisi gerektirir)
+      console.log(`[Zaman] Gece algılandı ve gerçek oyuncu yok. Sabah yapılıyor...`);
       bot.chat('/time set day');
     }
   });
