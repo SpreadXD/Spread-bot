@@ -24,6 +24,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
   let bot = mineflayer.createBot(botOptions);
   let moveInterval = null;
   let followInterval = null;
+  let danceTimeout = null;
   let isReconnecting = false;
   let lastTimeSet = 0;
   let lastWeatherClear = 0;
@@ -115,6 +116,37 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     }
   }
 
+  // İnteraktif Dans Animasyonu (Eğlence Amaçlı)
+  function startDancing() {
+    stopRandomMovement();
+    stopFollowing();
+    if (danceTimeout) {
+      clearInterval(danceTimeout);
+      danceTimeout = null;
+    }
+
+    let isSneaking = false;
+    let count = 0;
+
+    danceTimeout = setInterval(() => {
+      if (!bot || count > 15) {
+        clearInterval(danceTimeout);
+        danceTimeout = null;
+        if (bot) bot.setControlState('sneak', false);
+        startRandomMovement();
+        return;
+      }
+
+      isSneaking = !isSneaking;
+      bot.setControlState('sneak', isSneaking);
+      if (count % 3 === 0) {
+        bot.setControlState('jump', true);
+        setTimeout(() => { if (bot) bot.setControlState('jump', false); }, 300);
+      }
+      count++;
+    }, 400);
+  }
+
   // Eşya İsteği Ayrıştırıcı (Türkçe & İngilizce Destekli)
   function parseItemRequest(message) {
     const words = message.toLowerCase().split(/\s+/);
@@ -202,6 +234,10 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
   function cleanup() {
     stopRandomMovement();
     stopFollowing();
+    if (danceTimeout) {
+      clearInterval(danceTimeout);
+      danceTimeout = null;
+    }
     if (coordinator && !isLeader) {
       coordinator.unregisterSwarm(username);
     }
@@ -383,6 +419,78 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
       await handleGiveRequest(item, quantity);
       return;
     }
+
+    // ─── SOHBET & DANS DİYALOGLARI ───────────────────────────────────────────────────
+    const normalized = lowerMsg.replace(/[^a-z0-9çğıöşü]/g, '');
+
+    // Selamlaşma
+    if (normalized.includes('selam') || normalized.includes('merhaba') || normalized.includes('hello') || normalized.includes('hey') || normalized === 'sa' || normalized === 'slm') {
+      const replies = [
+        `Selam master! Bugün ne yapıyoruz?`,
+        `Merhaba ${master}! Emrindeyim.`,
+        `Aleykümselam master, hoş geldin!`
+      ];
+      bot.chat(replies[Math.floor(Math.random() * replies.length)]);
+      return;
+    }
+
+    // Hal hatır sorma
+    if (normalized.includes('nasilsin') || normalized.includes('nasılsın') || normalized.includes('keyifler') || normalized.includes('nasılgidiyor')) {
+      const replies = [
+        `Harikayım master! Sunucu saat gibi çalışıyor. Sen nasılsın?`,
+        `İyiyim master, seninle oynamak harika!`,
+        `7/24 nöbetteyim, yorulmak nedir bilmem! Sen nasılsın?`
+      ];
+      bot.chat(replies[Math.floor(Math.random() * replies.length)]);
+      return;
+    }
+
+    // Ne yapıyorsun
+    if (normalized.includes('neyapiyorsun') || normalized.includes('neyapıyorsun') || normalized.includes('napıyorsun') || normalized.includes('napiyorsun') || normalized.includes('neediyorsun') || normalized.includes('neediyon')) {
+      const replies = [
+        `Sunucuyu gözetliyorum master, her şey kontrolüm altında.`,
+        `Gece olmasını bekliyorum ki sabah yapayım! :)`,
+        `Seni izliyorum master, harika oynuyorsun!`
+      ];
+      bot.chat(replies[Math.floor(Math.random() * replies.length)]);
+      return;
+    }
+
+    // Kimsin
+    if (normalized.includes('kimsin') || normalized.includes('adınne') || normalized.includes('adinne') || normalized.includes('nesinsen')) {
+      const replies = [
+        `Ben senin sadık Lider Botunum. Bu sunucunun koruyucusuyum!`,
+        `Adım ${bot.username}, senin için buradayım master!`
+      ];
+      bot.chat(replies[Math.floor(Math.random() * replies.length)]);
+      return;
+    }
+
+    // Dans etme
+    if (normalized.includes('dans') || normalized.includes('oyna') || normalized.includes('sıkıldım') || normalized.includes('sikildim')) {
+      bot.chat('Hemen senin için dans ediyorum, izle! :)');
+      startDancing();
+      return;
+    }
+
+    // Övgüler
+    if (normalized.includes('adamsın') || normalized.includes('adamsin') || normalized.includes('cansın') || normalized.includes('cansin') || normalized.includes('kral') || normalized.includes('helal')) {
+      const replies = [
+        `Eyvallah master, senin yanında stajyeriz!`,
+        `Kral sensin master!`,
+        `Teşekkürler, senin için her şeye değer.`
+      ];
+      bot.chat(replies[Math.floor(Math.random() * replies.length)]);
+      return;
+    }
+
+    // Varsayılan yanıt
+    const defaultReplies = [
+      `Dediğini duydum master ama tam anlayamadım. Bana 'gel', 'takip et', 'dur', 'dans et' diyebilirsin veya benden '64 elmas' isteyebilirsin!`,
+      `Ben sadece basit bir botum master, ama senin için çalışıyorum!`,
+      `Bunu kelime dağarcığıma eklemeliyim! Şunu mu demek istedin: 'lider bana 64 ekmek ver'?`
+    ];
+    bot.chat(defaultReplies[Math.floor(Math.random() * defaultReplies.length)]);
   });
 
   // ─── STANDART OLAYLAR ─────────────────────────────────────────────────────────
@@ -401,6 +509,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     reconnect();
   });
 
+  // Hata yakalayıcı
   bot.on('error', (err) => {
     console.error(`[Hata] ${username}:`, err.message || err);
     reconnect();
