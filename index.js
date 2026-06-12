@@ -44,9 +44,10 @@ function loadConfig() {
     version: "1.20.1",
     botCount: 5,
     botNamePrefix: "SwarmBot_",
+    leaderName: "SpreadLeader", // Lider botun sabit ismi (bir kez /op ver, sonsuza kadar çalışır)
     randomMovement: true,
     autoRespawn: true,
-    autoDay: true, // Gece olduğunda otomatik sabah yapma özelliği
+    autoDay: true,
     reconnectInterval: 15000
   };
 }
@@ -97,6 +98,7 @@ async function main() {
     
     config.botCount = process.env.MC_BOT_COUNT ? parseInt(process.env.MC_BOT_COUNT) : config.botCount;
     config.botNamePrefix = process.env.MC_BOT_PREFIX || config.botNamePrefix;
+    config.leaderName = process.env.MC_LEADER_NAME || config.leaderName || 'SpreadLeader';
     config.reconnectInterval = process.env.MC_RECONNECT_INTERVAL ? parseInt(process.env.MC_RECONNECT_INTERVAL) : config.reconnectInterval;
     
     // Otomatik sabah yapma ayarı (varsayılan true, kapatmak için env'e false girilebilir)
@@ -108,6 +110,7 @@ async function main() {
     console.log(`- Sürüm: ${config.version}`);
     console.log(`- Bot Sayısı: ${config.botCount}`);
     console.log(`- İsim Ön Eki: ${config.botNamePrefix}`);
+    console.log(`- Lider Bot İsmi: ${config.leaderName}`);
     console.log(`- Otomatik Sabah Yapma (autoDay): ${config.autoDay}`);
     console.log(`- Yeniden Bağlanma Sıklığı: ${config.reconnectInterval / 1000} saniye`);
     console.log("----------------------------------------------------------");
@@ -162,11 +165,11 @@ async function main() {
 
   // Botları sırayla başlat
   for (let i = 1; i <= config.botCount; i++) {
-    const randSuffix = Math.floor(1000 + Math.random() * 9000);
-    const username = `${config.botNamePrefix}${i}_${randSuffix}`;
-    
-    // Sadece ilk bota (i === 1) lider/zaman yöneticisi rolü veriyoruz
+    // Lider bot sabit isim alır (OP'u kaybolmaz), diğerleri rastgele suffix alır
     const isLeader = i === 1;
+    const username = isLeader
+      ? config.leaderName
+      : `${config.botNamePrefix}${i}_${Math.floor(1000 + Math.random() * 9000)}`;
 
     setTimeout(() => {
       createManagedBot(config, username, isLeader);
