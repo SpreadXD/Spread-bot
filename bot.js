@@ -125,6 +125,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
 
   // Lider bot anında yeniden bağlanır (3sn), diğerleri biraz bekler (varsayılan 15sn)
   const reconnectDelay = isLeader ? 3000 : (config.reconnectInterval || 15000);
+  let customReconnectDelay = null;
 
   const botOptions = {
     host: config.host,
@@ -530,7 +531,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     } catch (e) {}
   }
 
-  function reconnect() {
+  function reconnect(overrideDelay) {
     if (isReconnecting) return;
 
     // Swarm botlar için kontrol: eğer gerçek oyuncu varsa veya coordinator aktif değilse bağlanma
@@ -541,7 +542,9 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
 
     isReconnecting = true;
     cleanup();
-    console.log(`[Bağlantı] ${username} için ${reconnectDelay / 1000}sn içinde yeniden bağlanılıyor...`);
+    
+    const delay = overrideDelay || reconnectDelay;
+    console.log(`[Bağlantı] ${username} için ${delay / 1000}sn içinde yeniden bağlanılıyor...`);
     setTimeout(() => {
       // Bağlanmadan hemen önce tekrar kontrol
       if (!isLeader && coordinator && !coordinator.shouldSwarmBeOnline) {
@@ -550,7 +553,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
         return;
       }
       createManagedBot(config, username, isLeader, coordinator);
-    }, reconnectDelay);
+    }, delay);
   }
 
   // ─── BOT OLAYLARI ────────────────────────────────────────────────────────────
@@ -798,6 +801,19 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
       return;
     }
 
+    // 10. Çıkış ve Süreli Dönüş Komutu
+    const isQuitCmd = lowerMsg.includes('oyundan çık') || lowerMsg.includes('dinlenmeye git') || lowerMsg.includes('git uyu') || lowerMsg.includes('sunucudan çık');
+    if (isQuitCmd) {
+      const numMatch = message.match(/\d+/);
+      if (numMatch) {
+        const minutes = parseInt(numMatch[0]);
+        bot.chat(`Tamam master, ${minutes} dakika dinlenmeye gidiyorum. Sonra döneceğim!`);
+        customReconnectDelay = minutes * 60 * 1000;
+        bot.quit();
+        return;
+      }
+    }
+
     // ─── SOHBET & DANS DİYALOGLARI ───────────────────────────────────────────────────
     const normalized = lowerMsg.replace(/[^a-z0-9çğıöşü]/g, '');
 
@@ -909,7 +925,8 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     console.log(`[Koptu] ${username} bağlantısı kesildi.`);
     // Lider bot her durumda yeniden bağlanır, swarm botlar sadece coordinator izin veriyorsa
     if (isLeader) {
-      reconnect();
+      reconnect(customReconnectDelay);
+      customReconnectDelay = null;
     } else {
       if (coordinator && coordinator.shouldSwarmBeOnline) {
         reconnect();
