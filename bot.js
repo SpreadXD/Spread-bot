@@ -152,8 +152,9 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     }
   }
 
-  // Master Oyuncu (Komut verebilen tek oyuncu)
-  const master = config.masterName || 'NuclearTactic';
+  // Master Oyuncular (Virgülle ayrılmış birden fazla isim destekler)
+  const authorizedMasters = (config.masterName || 'NuclearTactic').split(',').map(n => n.trim().toLowerCase());
+  let master = (config.masterName || 'NuclearTactic').split(',')[0].trim();
 
   /**
    * Sunucudaki gerçek oyuncu sayısını döndürür.
@@ -657,7 +658,10 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
   // Sohbet komutlarını algılayıcı (SADECE LİDER BOT)
   bot.on('chat', async (sender, message) => {
     if (!isLeader) return;
-    if (sender.toLowerCase() !== master.toLowerCase()) return;
+    if (!authorizedMasters.includes(sender.toLowerCase())) return;
+
+    // Kim komut veriyorsa güncel "master" o olur (takip, eşya verme, dönme işlemleri ona odaklanır)
+    master = sender;
 
     // Kendisine seslenip seslenilmediğini kontrol et (Küçük/büyük harf ve özel karakterlerden bağımsız)
     const cleanMsg = message.toLowerCase().replace(/[^a-z]/g, '');
