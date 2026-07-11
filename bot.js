@@ -515,6 +515,67 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     }
   }
 
+  const enToTr = {
+    'stone': 'Taş', 'dirt': 'Toprak', 'grass_block': 'Çimen', 'cobblestone': 'Kırık Taş',
+    'oak_log': 'Meşe Odunu', 'oak_planks': 'Meşe Tahtası', 'sand': 'Kum', 'gravel': 'Çakıl',
+    'water': 'Su', 'lava': 'Lav', 'bedrock': 'Katman Kayası', 'diamond_ore': 'Elmas Cevheri',
+    'iron_ore': 'Demir Cevheri', 'coal_ore': 'Kömür Cevheri', 'gold_ore': 'Altın Cevheri',
+    'diamond': 'Elmas', 'iron_ingot': 'Demir Külçesi', 'gold_ingot': 'Altın Külçesi',
+    'coal': 'Kömür', 'emerald': 'Zümrüt', 'bread': 'Ekmek', 'cooked_beef': 'Pişmiş Et',
+    'diamond_sword': 'Elmas Kılıç', 'diamond_pickaxe': 'Elmas Kazma', 'torch': 'Meşale',
+    'obsidian': 'Obsidyen', 'apple': 'Elma', 'wheat': 'Buğday', 'seeds': 'Tohum',
+    'birch_log': 'Huş Odunu', 'spruce_log': 'Ladin Odunu', 'andesite': 'Andezit',
+    'diorite': 'Diyorit', 'granite': 'Granit', 'iron_sword': 'Demir Kılıç',
+    'iron_pickaxe': 'Demir Kazma', 'bow': 'Yay', 'arrow': 'Ok', 'shield': 'Kalkan'
+  };
+
+  function trName(name) {
+    if (enToTr[name]) return enToTr[name];
+    return name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
+
+  async function reportStatus() {
+    if (!bot || !bot.entity) return;
+
+    const pos = bot.entity.position;
+    const health = Math.round(bot.health);
+    const food = Math.round(bot.food);
+    
+    // Envanter özeti
+    let invMsg = 'Envanterim boş.';
+    if (bot.inventory) {
+      const items = bot.inventory.items();
+      if (items.length > 0) {
+        const itemCounts = {};
+        for (const item of items) {
+          itemCounts[item.name] = (itemCounts[item.name] || 0) + item.count;
+        }
+        const itemNames = Object.keys(itemCounts).map(name => `${itemCounts[name]}x ${trName(name)}`);
+        invMsg = `Envanterimde: ${itemNames.join(', ')}`;
+      }
+    }
+
+    // Çevresel tarama (alt, üst, yan bloklar)
+    const blocksAround = new Set();
+    const radius = 2; // 5x5x5 alan
+    for (let x = -radius; x <= radius; x++) {
+      for (let y = -radius; y <= radius; y++) {
+        for (let z = -radius; z <= radius; z++) {
+          const block = bot.blockAt(pos.offset(x, y, z));
+          if (block && block.name !== 'air' && block.name !== 'cave_air' && block.name !== 'void_air') {
+            blocksAround.add(trName(block.name));
+          }
+        }
+      }
+    }
+    const blocksArray = Array.from(blocksAround).slice(0, 10); // Max 10 benzersiz blok
+    let blocksMsg = blocksArray.length > 0 ? `Çevremde gördüklerim: ${blocksArray.join(', ')}` : 'Çevremde sadece boşluk var.';
+
+    const report = `[Durum] Konumum: X:${Math.round(pos.x)}, Y:${Math.round(pos.y)}, Z:${Math.round(pos.z)}. Can: ${health}/20, Açlık: ${food}/20. ${blocksMsg} | ${invMsg}`;
+    
+    await sendSplitMessage(bot, report);
+  }
+
   function cleanup() {
     stopRandomMovement();
     stopFollowing();
@@ -812,6 +873,13 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
         bot.quit();
         return;
       }
+    }
+
+    // 11. Durum Raporu
+    if (lowerMsg.includes('durum') || lowerMsg.includes('rapor') || lowerMsg.includes('bilgi')) {
+      bot.chat('Hemen durum raporu hazırlıyorum master!');
+      await reportStatus();
+      return;
     }
 
     // ─── SOHBET & DANS DİYALOGLARI ───────────────────────────────────────────────────
