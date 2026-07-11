@@ -882,6 +882,19 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
       return;
     }
 
+    // 12. Komut Listesi
+    if (lowerMsg.includes('komutlar') || lowerMsg.includes('neler yapabilirsin') || lowerMsg.includes('yardım')) {
+      const helpMsg = `[Lider Bot Komutları] 
+🚶 TAKİP: takip et, peşimden gel | 🛑 DUR: dur, bekle | ⚡ GEL: yanıma gel, /tp | 
+🎁 EŞYA: elmas ver, ekmek at | 🎒 ENVANTER: envanterini at, elindekini at | 
+📊 DURUM: durum, rapor | 🛏️ ÇIKIŞ: oyundan çık 5 (5 dk çıkar) | 
+🤸 HAREKET: 360 dön, kafa salla, hayır de, zıpla, eğil, dans et | 
+Sohbet için normal yazman yeterlidir!`;
+      bot.chat('İşte yapabildiklerim master:');
+      await sendSplitMessage(bot, helpMsg);
+      return;
+    }
+
     // ─── SOHBET & DANS DİYALOGLARI ───────────────────────────────────────────────────
     const normalized = lowerMsg.replace(/[^a-z0-9çğıöşü]/g, '');
 
