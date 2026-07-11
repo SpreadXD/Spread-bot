@@ -157,6 +157,12 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
   const authorizedMasters = (config.masterName || 'NuclearTactic').split(',').map(n => n.trim().toLowerCase());
   let master = (config.masterName || 'NuclearTactic').split(',')[0].trim();
 
+  function getTitle(playerName) {
+    const p = playerName.toLowerCase();
+    if (p === 'nucleartactic' || p === 'spread' || p === 'spreadxd') return 'Yüce Liderim';
+    return playerName;
+  }
+
   /**
    * Sunucudaki gerçek oyuncu sayısını döndürür.
    * Bot kullanıcı adları (leaderName veya botNamePrefix ile başlayanlar) sayılmaz.
@@ -277,7 +283,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     if (!bot || !bot.inventory) return;
     const items = bot.inventory.items();
     if (items.length === 0) {
-      bot.chat('Envanterim zaten boş master!');
+      bot.chat(`Envanterim zaten boş ${getTitle(master)}!`);
       return;
     }
     bot.chat(`Envanterdeki ${items.length} çeşit eşyayı atıyorum...`);
@@ -291,7 +297,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
         await new Promise(resolve => setTimeout(resolve, 200));
       } catch (e) {}
     }
-    bot.chat('Tüm envanterimi attım master!');
+    bot.chat(`Tüm envanterimi attım ${getTitle(master)}!`);
   }
 
   // Sadece eldeki eşyayı at
@@ -299,7 +305,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     if (!bot || !bot.inventory) return;
     const heldItem = bot.inventory.slots[bot.quickBarSlot + 36];
     if (!heldItem) {
-      bot.chat('Elimde bir şey yok master!');
+      bot.chat(`Elimde bir şey yok ${getTitle(master)}!`);
       return;
     }
     bot.chat(`Elimdeki ${heldItem.name} eşyasını atıyorum...`);
@@ -309,7 +315,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     }
     try {
       await bot.tossStack(heldItem);
-      bot.chat('Elimdekini attım master!');
+      bot.chat(`Elimdekini attım ${getTitle(master)}!`);
     } catch (e) {
       bot.chat('Eşyayı atarken hata oluştu.');
     }
@@ -336,7 +342,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
       step++;
       if (step >= steps) {
         clearInterval(spinInterval);
-        bot.chat("360 derece döndüm master!");
+        bot.chat("360 derece döndüm ${getTitle(master)}!");
         startRandomMovement();
       }
     }, stepDelay);
@@ -366,7 +372,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     }
     
     if (bot) {
-      bot.chat("Kafamı salladım master!");
+      bot.chat("Kafamı salladım ${getTitle(master)}!");
       startRandomMovement();
     }
   }
@@ -395,7 +401,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     }
     
     if (bot) {
-      bot.chat("Hayır anlamında kafamı salladım master.");
+      bot.chat("Hayır anlamında kafamı salladım ${getTitle(master)}.");
       startRandomMovement();
     }
   }
@@ -809,10 +815,10 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
 
     if (isHeadNod || isHeadShake) {
       if (isHeadShake) {
-        bot.chat('Hayır diyorum master...');
+        bot.chat('Hayır diyorum ${getTitle(master)}...');
         await startShakingHead();
       } else {
-        bot.chat('Evet diyorum master!');
+        bot.chat(`Evet diyorum ${getTitle(master)}!`);
         await startNodding();
       }
       return;
@@ -868,7 +874,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
       const numMatch = message.match(/\d+/);
       if (numMatch) {
         const minutes = parseInt(numMatch[0]);
-        bot.chat(`Tamam master, ${minutes} dakika dinlenmeye gidiyorum. Sonra döneceğim!`);
+        bot.chat(`Tamam ${getTitle(master)}, ${minutes} dakika dinlenmeye gidiyorum. Sonra döneceğim!`);
         customReconnectDelay = minutes * 60 * 1000;
         bot.quit();
         return;
@@ -877,7 +883,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
 
     // 11. Durum Raporu
     if (lowerMsg.includes('durum') || lowerMsg.includes('rapor') || lowerMsg.includes('bilgi')) {
-      bot.chat('Hemen durum raporu hazırlıyorum master!');
+      bot.chat(`Hemen durum raporu hazırlıyorum ${getTitle(master)}!`);
       await reportStatus();
       return;
     }
@@ -920,9 +926,9 @@ Sohbet için normal yazman yeterlidir!`;
     // Selamlaşma
     if (normalized.includes('selam') || normalized.includes('merhaba') || normalized.includes('hello') || normalized.includes('hey') || normalized === 'sa' || normalized === 'slm') {
       const replies = [
-        `Selam master! Bugün ne yapıyoruz?`,
-        `Merhaba ${master}! Emrindeyim.`,
-        `Aleykümselam master, hoş geldin!`
+        `Selam ${getTitle(master)}! Bugün ne yapıyoruz?`,
+        `Merhaba ${getTitle(master)}! Emrindeyim.`,
+        `Aleykümselam ${getTitle(master)}, hoş geldin!`
       ];
       bot.chat(replies[Math.floor(Math.random() * replies.length)]);
       return;
@@ -931,8 +937,8 @@ Sohbet için normal yazman yeterlidir!`;
     // Hal hatır sorma
     if (normalized.includes('nasilsin') || normalized.includes('nasılsın') || normalized.includes('keyifler') || normalized.includes('nasılgidiyor')) {
       const replies = [
-        `Harikayım master! Sunucu saat gibi çalışıyor. Sen nasılsın?`,
-        `İyiyim master, seninle oynamak harika!`,
+        `Harikayım ${getTitle(master)}! Sunucu saat gibi çalışıyor. Sen nasılsın?`,
+        `İyiyim ${getTitle(master)}, seninle oynamak harika!`,
         `7/24 nöbetteyim, yorulmak nedir bilmem! Sen nasılsın?`
       ];
       bot.chat(replies[Math.floor(Math.random() * replies.length)]);
@@ -942,9 +948,9 @@ Sohbet için normal yazman yeterlidir!`;
     // Ne yapıyorsun
     if (normalized.includes('neyapiyorsun') || normalized.includes('neyapıyorsun') || normalized.includes('napıyorsun') || normalized.includes('napiyorsun') || normalized.includes('neediyorsun') || normalized.includes('neediyon')) {
       const replies = [
-        `Sunucuyu gözetliyorum master, her şey kontrolüm altında.`,
+        `Sunucuyu gözetliyorum ${getTitle(master)}, her şey kontrolüm altında.`,
         `Gece olmasını bekliyorum ki sabah yapayım! :)`,
-        `Seni izliyorum master, harika oynuyorsun!`
+        `Seni izliyorum ${getTitle(master)}, harika oynuyorsun!`
       ];
       bot.chat(replies[Math.floor(Math.random() * replies.length)]);
       return;
@@ -954,7 +960,7 @@ Sohbet için normal yazman yeterlidir!`;
     if (normalized.includes('kimsin') || normalized.includes('adınne') || normalized.includes('adinne') || normalized.includes('nesinsen')) {
       const replies = [
         `Ben senin sadık Lider Botunum. Bu sunucunun koruyucusuyum!`,
-        `Adım ${bot.username}, senin için buradayım master!`
+        `Adım ${bot.username}, senin için buradayım ${getTitle(master)}!`
       ];
       bot.chat(replies[Math.floor(Math.random() * replies.length)]);
       return;
@@ -963,8 +969,8 @@ Sohbet için normal yazman yeterlidir!`;
     // Övgüler
     if (normalized.includes('adamsın') || normalized.includes('adamsin') || normalized.includes('cansın') || normalized.includes('cansin') || normalized.includes('kral') || normalized.includes('helal')) {
       const replies = [
-        `Eyvallah master, senin yanında stajyeriz!`,
-        `Kral sensin master!`,
+        `Eyvallah ${getTitle(master)}, senin yanında stajyeriz!`,
+        `Kral sensin ${getTitle(master)}!`,
         `Teşekkürler, senin için her şeye değer.`
       ];
       bot.chat(replies[Math.floor(Math.random() * replies.length)]);
@@ -974,7 +980,7 @@ Sohbet için normal yazman yeterlidir!`;
     // Varsayılan yanıt
     const defaultReplies = [
       `Dediğini duydum master ama tam anlayamadım. Bana 'gel', 'takip et', 'dur', 'dans et' diyebilirsin veya benden '64 elmas' isteyebilirsin!`,
-      `Ben sadece basit bir botum master, ama senin için çalışıyorum!`,
+      `Ben sadece basit bir botum ${getTitle(master)}, ama senin için çalışıyorum!`,
       `Bunu kelime dağarcığıma eklemeliyim! Şunu mu demek istedin: 'lider bana 64 ekmek ver'?`
     ];
     bot.chat(defaultReplies[Math.floor(Math.random() * defaultReplies.length)]);
