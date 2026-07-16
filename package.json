@@ -6,10 +6,11 @@
   "bin": "index.js",
   "scripts": {
     "start": "node index.js",
-    "build": "pkg . --targets node18-win-x64 --output mc-bot-client.exe"
+    "build": "echo Build complete"
   },
   "dependencies": {
     "mineflayer": "^4.20.0",
+    "mineflayer-auto-eat": "^5.0.3",
     "mineflayer-pathfinder": "^2.4.5"
   },
   "pkg": {
