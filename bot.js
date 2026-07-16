@@ -342,7 +342,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
       step++;
       if (step >= steps) {
         clearInterval(spinInterval);
-        bot.chat("360 derece döndüm ${getTitle(master)}!");
+        bot.chat(`360 derece döndüm ${getTitle(master)}!`);
         startRandomMovement();
       }
     }, stepDelay);
@@ -372,7 +372,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     }
     
     if (bot) {
-      bot.chat("Kafamı salladım ${getTitle(master)}!");
+      bot.chat(`Kafamı salladım ${getTitle(master)}!`);
       startRandomMovement();
     }
   }
@@ -401,7 +401,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     }
     
     if (bot) {
-      bot.chat("Hayır anlamında kafamı salladım ${getTitle(master)}.");
+      bot.chat(`Hayır anlamında kafamı salladım ${getTitle(master)}.`);
       startRandomMovement();
     }
   }
@@ -815,7 +815,7 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
 
     if (isHeadNod || isHeadShake) {
       if (isHeadShake) {
-        bot.chat('Hayır diyorum ${getTitle(master)}...');
+        bot.chat(`Hayır diyorum ${getTitle(master)}...`);
         await startShakingHead();
       } else {
         bot.chat(`Evet diyorum ${getTitle(master)}!`);
