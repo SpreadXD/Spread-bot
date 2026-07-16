@@ -135,7 +135,25 @@ function createManagedBot(config, username, isLeader = false, coordinator = null
     skipValidation: true
   };
 
+  console.log(`[Bağlantı] ${username} → ${config.host}:${parseInt(config.port) || 25565} (sürüm: ${config.version || 'auto'}) bağlanıyor...`);
+
   let bot = mineflayer.createBot(botOptions);
+  
+  // Detaylı bağlantı loglaması
+  bot._client.on('connect', () => {
+    console.log(`[Bağlantı] ${username} TCP bağlantısı kuruldu!`);
+  });
+  bot._client.on('error', (err) => {
+    console.error(`[Bağlantı] ${username} _client hatası:`, err.message);
+  });
+  bot._client.on('end', () => {
+    console.log(`[Bağlantı] ${username} _client bağlantısı kapandı.`);
+  });
+  setTimeout(() => {
+    if (bot && bot._client && !bot._client.socket?.writable) {
+      console.error(`[Bağlantı] ${username} 15sn içinde bağlanamadı — sunucu erişilemez olabilir!`);
+    }
+  }, 15000);
   bot.loadPlugin(pathfinder);
   let moveInterval = null;
   let followInterval = null;
